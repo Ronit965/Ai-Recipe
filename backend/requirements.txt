@@ -1,0 +1,8 @@
+Django==5.2.4
+djangorestframework==3.16.0
+django-cors-headers==4.7.0
+python-dotenv==1.1.1
+requests==2.32.3
+djangorestframework-simplejwt==5.5.1
+huggingface-hub==0.28.0
+transformers==4.49.0

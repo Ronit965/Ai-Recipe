@@ -1,0 +1,12 @@
+{
+  "name": "ai-recipe-generator",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "preview": "npm run preview --prefix frontend",
+    "install:frontend": "npm install --prefix frontend",
+    "backend": "cd backend && python3 manage.py runserver 8000"
+  }
+}
