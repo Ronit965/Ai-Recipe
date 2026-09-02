@@ -10,14 +10,19 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 
+import shutil
+
 # ── Security ──────────────────────────────────────────────────────────────────
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-key-change-in-production')
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = [
     host.strip()
-    for host in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,.vercel.app,*').split(',')
+    for host in os.getenv('ALLOWED_HOSTS', '*').split(',')
     if host.strip()
 ]
+for host in ['.vercel.app', '.now.sh', 'localhost', '127.0.0.1', '[::1]']:
+    if '*' not in ALLOWED_HOSTS and host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(host)
 
 
 # ── Installed Apps ────────────────────────────────────────────────────────────
@@ -72,12 +77,28 @@ TEMPLATES = [
 WSGI_APPLICATION = 'core.wsgi.application'
 
 # ── Database ──────────────────────────────────────────────────────────────────
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# On Vercel / AWS Lambda, the project directory is read-only, so SQLite must use /tmp
+if os.getenv('VERCEL') or os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
+    db_path = Path('/tmp') / 'db.sqlite3'
+    source_db = BASE_DIR / 'db.sqlite3'
+    if source_db.exists() and not db_path.exists():
+        try:
+            shutil.copyfile(source_db, db_path)
+        except Exception:
+            pass
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': db_path,
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # ── Auth / Password ───────────────────────────────────────────────────────────
 AUTH_PASSWORD_VALIDATORS = [
@@ -145,6 +166,8 @@ CSRF_TRUSTED_ORIGINS = [
     ).split(',')
     if origin.strip()
 ]
+if 'https://*.vercel.app' not in CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS.append('https://*.vercel.app')
 
 CORS_ALLOW_CREDENTIALS = True
 
