@@ -20,7 +20,7 @@ ALLOWED_HOSTS = [
     for host in os.getenv('ALLOWED_HOSTS', '*').split(',')
     if host.strip()
 ]
-for host in ['.vercel.app', '.now.sh', 'localhost', '127.0.0.1', '[::1]']:
+for host in ['.vercel.app', '.now.sh', 'ai-recipe-2wpn.vercel.app', 'localhost', '127.0.0.1', '[::1]']:
     if '*' not in ALLOWED_HOSTS and host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(host)
 
@@ -149,10 +149,13 @@ CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
         'CORS_ALLOWED_ORIGINS',
-        'http://localhost:5173,http://127.0.0.1:5173'
+        'https://ai-recipe-eta.vercel.app,http://localhost:5173,http://127.0.0.1:5173'
     ).split(',')
     if origin.strip()
 ]
+for origin in ['https://ai-recipe-eta.vercel.app', 'http://localhost:5173', 'http://127.0.0.1:5173']:
+    if origin not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append(origin)
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.vercel\.app$",
@@ -162,12 +165,13 @@ CSRF_TRUSTED_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
         'CSRF_TRUSTED_ORIGINS',
-        'https://*.vercel.app,http://localhost:5173,http://127.0.0.1:5173'
+        'https://*.vercel.app,https://ai-recipe-eta.vercel.app,https://ai-recipe-2wpn.vercel.app,http://localhost:5173,http://127.0.0.1:5173'
     ).split(',')
     if origin.strip()
 ]
-if 'https://*.vercel.app' not in CSRF_TRUSTED_ORIGINS:
-    CSRF_TRUSTED_ORIGINS.append('https://*.vercel.app')
+for origin in ['https://*.vercel.app', 'https://ai-recipe-eta.vercel.app', 'https://ai-recipe-2wpn.vercel.app']:
+    if origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(origin)
 
 CORS_ALLOW_CREDENTIALS = True
 
