@@ -142,7 +142,7 @@ export default function GeneratorPage() {
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`http://localhost:8000/api/recipes/search/?q=${encodeURIComponent(query)}`)
+        const res = await fetch(`https://ai-recipe-2wpn.vercel.app//api/recipes/search/?q=${encodeURIComponent(query)}`)
         const data = await res.json()
         setSuggestions(data.suggestions || [])
       } catch { setSuggestions([]) }

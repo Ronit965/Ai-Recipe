@@ -6,10 +6,18 @@ Provides collection accessors and connection status check.
 """
 import logging
 from django.conf import settings
-from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+
+try:
+    from pymongo import MongoClient
+    from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+    PYMONGO_AVAILABLE = True
+except ImportError:
+    MongoClient = None
+    ConnectionFailure = ServerSelectionTimeoutError = Exception
+    PYMONGO_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
 
 _mongo_client = None
 
@@ -17,6 +25,9 @@ _mongo_client = None
 def get_mongo_client():
     """Return a singleton MongoClient instance."""
     global _mongo_client
+    if not PYMONGO_AVAILABLE or MongoClient is None:
+        logger.warning("pymongo is not installed.")
+        return None
     if _mongo_client is None:
         try:
             _mongo_client = MongoClient(
@@ -59,6 +70,8 @@ def check_mongo_connection():
     Returns:
         (is_connected: bool, message: str)
     """
+    if not PYMONGO_AVAILABLE:
+        return False, "pymongo package is not installed"
     client = get_mongo_client()
     if client is None:
         return False, "MongoClient not initialized"
@@ -68,3 +81,4 @@ def check_mongo_connection():
         return True, "Connected to MongoDB"
     except (ConnectionFailure, ServerSelectionTimeoutError, Exception) as e:
         return False, str(e)
+

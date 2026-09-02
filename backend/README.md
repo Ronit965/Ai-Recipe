@@ -29,7 +29,7 @@ python manage.py createsuperuser
 python manage.py runserver 8000
 ```
 
-The API will be available at **http://localhost:8000/api/**
+The API will be available at **https://ai-recipe-2wpn.vercel.app//api/**
 
 ---
 
@@ -86,7 +86,7 @@ When you have a HuggingFace API key:
 
 ## Admin Panel
 
-Visit **http://localhost:8000/admin/**
+Visit **https://ai-recipe-2wpn.vercel.app//admin/**
 
 Login: `admin` / `admin123` *(change in production!)*
 

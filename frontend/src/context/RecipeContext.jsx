@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect } from 'react'
 
 const RecipeContext = createContext()
 
-const API_BASE = 'http://localhost:8000/api'
+const API_BASE = 'https://ai-recipe-2wpn.vercel.app//api'
 
 // Fallback popular recipes (shown while API loads or as offline defaults)
 const FALLBACK_RECIPES = [

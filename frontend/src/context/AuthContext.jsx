@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 
 const AuthContext = createContext(null)
 
-const API_BASE = 'http://localhost:8000/api/auth'
+const API_BASE = 'https://ai-recipe-2wpn.vercel.app//api/auth'
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
