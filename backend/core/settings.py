@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     # Local
     'recipes',
     'users',
+    'payments',
 ]
 
 # ── Middleware ─────────────────────────────────────────────────────────────────
@@ -183,4 +184,9 @@ HUGGINGFACE_MODEL = os.getenv('HUGGINGFACE_MODEL', 'Qwen/Qwen2.5-1.5B-Instruct')
 MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
 MONGODB_DB_NAME = os.getenv('MONGODB_DB_NAME', 'recipeai_db')
 MONGODB_TIMEOUT_MS = int(os.getenv('MONGODB_TIMEOUT_MS', '3000'))
+
+# ── Razorpay Payment Gateway ──────────────────────────────────────────────────
+RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID', '')
+RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET', '')
+
 

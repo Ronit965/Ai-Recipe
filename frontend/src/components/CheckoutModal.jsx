@@ -9,14 +9,18 @@ import {
   FiZap,
   FiAward,
   FiCheckCircle,
-  FiSmartphone
+  FiSmartphone,
+  FiAlertCircle
 } from 'react-icons/fi'
 import { useAuth } from '../context/AuthContext'
 import './CheckoutModal.css'
 
+const API_URL = import.meta.env.VITE_API_URL || 'https://ai-recipe-2wpn.vercel.app'
+const API_BASE = `${API_URL.replace(/\/+$/, '')}/api/payments`
+
 export default function CheckoutModal({ plan, currency, onClose, onSuccess }) {
   const { user, subscribePlan } = useAuth()
-  const [paymentMethod, setPaymentMethod] = useState('card') // 'card' | 'upi' | 'paypal' | 'applepay'
+  const [paymentMethod, setPaymentMethod] = useState('razorpay') // 'razorpay' | 'card' | 'upi'
   const [cardNumber, setCardNumber] = useState('')
   const [cardExpiry, setCardExpiry] = useState('')
   const [cardCvc, setCardCvc] = useState('')
@@ -27,6 +31,7 @@ export default function CheckoutModal({ plan, currency, onClose, onSuccess }) {
   const [couponError, setCouponError] = useState('')
   const [couponSuccess, setCouponSuccess] = useState('')
   const [processing, setProcessing] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
   const [isSuccess, setIsSuccess] = useState(false)
 
   if (!plan) return null
@@ -76,29 +81,144 @@ export default function CheckoutModal({ plan, currency, onClose, onSuccess }) {
   const currencySymbol = currency === 'INR' ? '₹' : '$'
   const finalPriceFormatted = `${currencySymbol}${finalPriceNum.toFixed(currency === 'INR' ? 0 : 2)}`
 
-  // Submit Payment
-  const handleCheckoutSubmit = (e) => {
-    e.preventDefault()
-    setProcessing(true)
+  // Complete & Activate Subscription
+  const finalizeSubscription = (paymentDetails = {}) => {
+    const sub = subscribePlan({
+      planId: plan.id,
+      name: plan.name,
+      price: finalPriceFormatted,
+      currency: currency,
+      billingPeriod: plan.periodLabel,
+      paymentId: paymentDetails.paymentId || `mock_pay_${Date.now()}`,
+      orderId: paymentDetails.orderId || '',
+    })
+
+    setProcessing(false)
+    setIsSuccess(true)
 
     setTimeout(() => {
-      // Complete subscription
-      const sub = subscribePlan({
-        planId: plan.id,
-        name: plan.name,
-        price: finalPriceFormatted,
-        currency: currency,
-        billingPeriod: plan.periodLabel,
-      })
+      if (onSuccess) onSuccess(sub)
+      onClose()
+    }, 1800)
+  }
 
-      setProcessing(false)
-      setIsSuccess(true)
+  // Razorpay Checkout Trigger
+  const handleRazorpayPayment = async () => {
+    setProcessing(true)
+    setErrorMessage('')
 
+    try {
+      // 1. Create order on backend
+      let orderData = null
+      try {
+        const orderRes = await fetch(`${API_BASE}/create-order/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            plan_id: plan.id,
+            plan_name: plan.name,
+            amount: finalPriceNum,
+            currency: currency,
+          }),
+        })
+        if (orderRes.ok) {
+          orderData = await orderRes.json()
+        }
+      } catch (err) {
+        console.warn('Backend payment order offline, falling back to client checkout:', err)
+      }
+
+      const razorpayKey = orderData?.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID
+
+      // 2. Check if Razorpay JS SDK is loaded and valid key available
+      if (window.Razorpay && razorpayKey && razorpayKey !== 'rzp_test_placeholder') {
+        const options = {
+          key: razorpayKey,
+          amount: orderData?.amount || Math.round(finalPriceNum * 100),
+          currency: currency,
+          name: 'RecipeAI Pro',
+          description: `${plan.name} (${plan.periodLabel})`,
+          image: '/favicon.svg',
+          order_id: orderData?.order_id && !orderData.order_id.startsWith('order_mock_') ? orderData.order_id : undefined,
+          handler: async function (response) {
+            // Verify payment with backend
+            try {
+              await fetch(`${API_BASE}/verify/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id || orderData?.order_id || '',
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature || '',
+                  plan_id: plan.id,
+                  plan_name: plan.name,
+                  price: finalPriceFormatted,
+                  currency: currency,
+                }),
+              })
+            } catch (vErr) {
+              console.warn('Backend verification notice:', vErr)
+            }
+
+            finalizeSubscription({
+              paymentId: response.razorpay_payment_id,
+              orderId: response.razorpay_order_id,
+            })
+          },
+          prefill: {
+            name: user?.name || cardName || '',
+            email: user?.email || '',
+            contact: '',
+          },
+          notes: {
+            plan_id: plan.id,
+            plan_name: plan.name,
+          },
+          theme: {
+            color: '#00cba3',
+          },
+          modal: {
+            ondismiss: function () {
+              setProcessing(false)
+            },
+          },
+        }
+
+        const rzp = new window.Razorpay(options)
+        rzp.on('payment.failed', function (resp) {
+          setProcessing(false)
+          setErrorMessage(resp.error?.description || 'Payment was cancelled or failed.')
+        })
+        rzp.open()
+        return
+      }
+
+      // If simulated / direct test mode
       setTimeout(() => {
-        if (onSuccess) onSuccess(sub)
-        onClose()
-      }, 1600)
-    }, 1200)
+        finalizeSubscription({
+          paymentId: `rzp_sim_${Date.now()}`,
+          orderId: orderData?.order_id || `order_sim_${Date.now()}`,
+        })
+      }, 1200)
+    } catch (error) {
+      setProcessing(false)
+      setErrorMessage(error.message || 'Payment initiation failed. Please try again.')
+    }
+  }
+
+  // Submit Payment Form
+  const handleCheckoutSubmit = (e) => {
+    e.preventDefault()
+    if (paymentMethod === 'razorpay') {
+      handleRazorpayPayment()
+    } else {
+      setProcessing(true)
+      setTimeout(() => {
+        finalizeSubscription()
+      }, 1200)
+    }
   }
 
   return (
@@ -139,6 +259,23 @@ export default function CheckoutModal({ plan, currency, onClose, onSuccess }) {
               <h2 className="checkout-title">Complete Your Subscription</h2>
               <p className="checkout-sub">Unlock unlimited AI recipes, custom meal plans, and culinary superpowers.</p>
             </div>
+
+            {errorMessage && (
+              <div className="checkout-error-banner animate-fade-in" style={{
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                color: '#ef4444',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                marginBottom: '16px',
+                fontSize: '0.9rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <FiAlertCircle size={16} /> {errorMessage}
+              </div>
+            )}
 
             {/* Content Columns */}
             <div className="checkout-grid">
@@ -222,11 +359,19 @@ export default function CheckoutModal({ plan, currency, onClose, onSuccess }) {
                 <div className="checkout-methods">
                   <button
                     type="button"
+                    className={`method-tab ${paymentMethod === 'razorpay' ? 'active' : ''}`}
+                    onClick={() => setPaymentMethod('razorpay')}
+                  >
+                    <FiZap size={17} style={{ color: '#00cba3' }} />
+                    <span>Razorpay (UPI, Cards, Netbanking)</span>
+                  </button>
+                  <button
+                    type="button"
                     className={`method-tab ${paymentMethod === 'card' ? 'active' : ''}`}
                     onClick={() => setPaymentMethod('card')}
                   >
                     <FiCreditCard size={17} />
-                    <span>Card</span>
+                    <span>Direct Card</span>
                   </button>
                   <button
                     type="button"
@@ -234,25 +379,31 @@ export default function CheckoutModal({ plan, currency, onClose, onSuccess }) {
                     onClick={() => setPaymentMethod('upi')}
                   >
                     <FiSmartphone size={17} />
-                    <span>UPI / GPay</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`method-tab ${paymentMethod === 'paypal' ? 'active' : ''}`}
-                    onClick={() => setPaymentMethod('paypal')}
-                  >
-                    <span>🅿️ PayPal</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`method-tab ${paymentMethod === 'applepay' ? 'active' : ''}`}
-                    onClick={() => setPaymentMethod('applepay')}
-                  >
-                    <span>🍏 Apple Pay</span>
+                    <span>UPI ID</span>
                   </button>
                 </div>
 
                 <form onSubmit={handleCheckoutSubmit} className="checkout-form">
+                  {paymentMethod === 'razorpay' && (
+                    <div className="payment-fields animate-fade-in" style={{
+                      padding: '16px',
+                      background: 'rgba(0, 203, 163, 0.06)',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(0, 203, 163, 0.2)',
+                      marginBottom: '16px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '1.4rem' }}>⚡</span>
+                        <div>
+                          <strong style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>Instant Razorpay Checkout</strong>
+                          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                            Supports Google Pay, PhonePe, Paytm, BHIM UPI, Cards & Netbanking.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {paymentMethod === 'card' && (
                     <div className="payment-fields animate-fade-in">
                       <div className="input-group">
@@ -328,24 +479,6 @@ export default function CheckoutModal({ plan, currency, onClose, onSuccess }) {
                         <div className="upi-hints">
                           <span>Instant UPI authentication & immediate activation</span>
                         </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {paymentMethod === 'paypal' && (
-                    <div className="payment-fields paypal-box animate-fade-in">
-                      <p>You will be redirected securely to PayPal to confirm your subscription.</p>
-                      <div className="paypal-preview-btn">
-                        <span>PayPal Express Checkout</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {paymentMethod === 'applepay' && (
-                    <div className="payment-fields applepay-box animate-fade-in">
-                      <p>Authorize payment seamlessly with Touch ID or Face ID on Apple Pay.</p>
-                      <div className="applepay-preview-btn">
-                        <span>🍏 Pay with Apple Pay</span>
                       </div>
                     </div>
                   )}

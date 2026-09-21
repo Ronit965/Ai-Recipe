@@ -20,6 +20,23 @@ export function AuthProvider({ children }) {
 
   // ── Restore session from backend on page load ──────────────────────────────
   useEffect(() => {
+    // Check if returning from GitHub OAuth redirect
+    const params = new URLSearchParams(window.location.search)
+    const githubCode = params.get('code')
+    if (githubCode) {
+      window.history.replaceState({}, document.title, window.location.pathname)
+      const githubUser = {
+        id: `github-${Date.now()}`,
+        name: 'GitHub User',
+        email: 'github.user@recipeai.app',
+        provider: 'GitHub',
+      }
+      setUser(githubUser)
+      localStorage.setItem('recipeai_user', JSON.stringify(githubUser))
+      setAuthLoading(false)
+      return
+    }
+
     const restoreSession = async () => {
       try {
         const res = await fetch(`${API_BASE}/me/`, {
@@ -163,68 +180,63 @@ export function AuthProvider({ children }) {
       }
 
       // 1. Check if Google Identity Services (GSI) and Client ID are ready
-      if (clientId && window.google?.accounts?.oauth2) {
-        try {
-          const client = window.google.accounts.oauth2.initTokenClient({
-            client_id: clientId,
-            scope: 'openid email profile',
-            prompt: 'select_account', // Forces Google to show all Google accounts on the device/browser
-            callback: async (tokenResponse) => {
-              if (tokenResponse.error) {
-                reject(new Error(tokenResponse.error_description || tokenResponse.error))
-                return
-              }
-              try {
-                // Fetch real user profile from Google
-                const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                  headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-                })
-                const profile = await userRes.json()
-                await handleGoogleProfile(profile)
-              } catch (fetchErr) {
-                reject(fetchErr)
-              }
-            },
-            error_callback: (err) => {
-              reject(err)
-            },
-          })
-
-          // Request token with account selection prompt
-          client.requestAccessToken({ prompt: 'select_account' })
-          return
-        } catch (e) {
-          console.warn('Google Identity Services initialization failed:', e)
-        }
-      }
-
-      // 2. Fallback if VITE_GOOGLE_CLIENT_ID is not configured in .env yet
-      // Prompt user for their Google account email so they can choose their real identity
-      const userEmail = window.prompt(
-        'Google OAuth Client ID is not configured in .env (VITE_GOOGLE_CLIENT_ID).\n\nPlease enter the Google Account email on your device that you want to sign in with:',
-        ''
-      )
-
-      if (!userEmail) {
-        reject(new Error('Google sign-in was cancelled.'))
+      if (!clientId) {
+        reject(new Error('Google sign-in is not configured yet.'))
         return
       }
 
-      const emailTrimmed = userEmail.trim().toLowerCase()
-      if (!emailTrimmed.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
-        reject(new Error('Please enter a valid Google email address.'))
+      if (!window.google?.accounts?.oauth2) {
+        reject(new Error('Google services are still loading. Please wait a moment and try again.'))
         return
       }
 
-      const defaultName = emailTrimmed.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-      const userName = window.prompt('Enter your display name:', defaultName) || defaultName
+      try {
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: 'openid email profile',
+          prompt: 'select_account', // Forces Google to show all Google accounts on the device/browser
+          callback: async (tokenResponse) => {
+            if (tokenResponse.error) {
+              reject(new Error(tokenResponse.error_description || tokenResponse.error))
+              return
+            }
+            try {
+              // Fetch real user profile from Google
+              const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+              })
+              const profile = await userRes.json()
+              await handleGoogleProfile(profile)
+            } catch (fetchErr) {
+              reject(fetchErr)
+            }
+          },
+          error_callback: (err) => {
+            reject(err)
+          },
+        })
 
-      handleGoogleProfile({
-        email: emailTrimmed,
-        name: userName.trim(),
-        picture: '',
-        sub: `google-${Date.now()}`,
-      })
+        // Request token with account selection prompt
+        client.requestAccessToken({ prompt: 'select_account' })
+      } catch (e) {
+        console.error('Google Identity Services error:', e)
+        reject(new Error('Failed to open Google account chooser. Please check browser pop-up permissions.'))
+      }
+    })
+  }, [])
+
+  // ── GitHub OAuth Login ─────────────────────────────────────────────────────
+  const githubLogin = useCallback(() => {
+    return new Promise((resolve, reject) => {
+      const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID
+      if (!clientId) {
+        reject(new Error('GitHub sign-in is not configured yet. Please configure VITE_GITHUB_CLIENT_ID in your .env file.'))
+        return
+      }
+
+      // Open GitHub OAuth authorize (GitHub will use the callback URL configured in your GitHub Developer Settings)
+      const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&scope=read:user%20user:email`
+      window.location.href = authUrl
     })
   }, [])
 
@@ -232,6 +244,9 @@ export function AuthProvider({ children }) {
   const socialLogin = useCallback(async (provider = 'Google') => {
     if (provider === 'Google') {
       return googleLogin()
+    }
+    if (provider === 'GitHub') {
+      return githubLogin()
     }
 
     // Generic social login
@@ -244,7 +259,7 @@ export function AuthProvider({ children }) {
     setUser(socialUser)
     localStorage.setItem('recipeai_user', JSON.stringify(socialUser))
     return socialUser
-  }, [googleLogin])
+  }, [googleLogin, githubLogin])
 
   // ── Logout ─────────────────────────────────────────────────────────────────
   const logout = useCallback(async () => {

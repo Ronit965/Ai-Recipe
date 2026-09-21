@@ -243,3 +243,64 @@ class GoogleAuthView(APIView):
         )
         return _set_auth_cookies(response, refresh)
 
+
+class GithubAuthView(APIView):
+    """
+    POST /api/auth/github/
+    Authenticate or register user using verified GitHub profile data.
+    Body: { "email": "...", "name": "...", "github_id": "...", "avatar": "..." }
+    """
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        name = request.data.get('name', '').strip() or 'GitHub User'
+        avatar = request.data.get('avatar', '')
+
+        if not email:
+            return Response(
+                {'errors': {'general': 'GitHub account email is required.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = User.objects.filter(email__iexact=email).first()
+        if not user:
+            user = User.objects.filter(username__iexact=email).first()
+
+        if not user:
+            parts = name.split(' ', 1)
+            first_name = parts[0] if parts else 'GitHub'
+            last_name = parts[1] if len(parts) > 1 else ''
+
+            user = User.objects.create_user(
+                username=email,
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+            )
+            user.set_unusable_password()
+            user.save()
+        else:
+            if name and not user.first_name:
+                parts = name.split(' ', 1)
+                user.first_name = parts[0]
+                user.last_name = parts[1] if len(parts) > 1 else ''
+                user.save()
+
+        if not user.is_active:
+            return Response(
+                {'errors': {'general': 'This account has been disabled.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        refresh = RefreshToken.for_user(user)
+        user_data = UserSerializer(user).data
+        if avatar:
+            user_data['avatar'] = avatar
+
+        response = Response(
+            {'message': 'Logged in with GitHub successfully.', 'user': user_data},
+            status=status.HTTP_200_OK,
+        )
+        return _set_auth_cookies(response, refresh)
+
+

@@ -8,4 +8,5 @@ huggingface-hub==0.28.0
 transformers==4.49.0
 pymongo>=4.6.0
 dnspython>=2.6.0
+razorpay>=1.4.1
 
